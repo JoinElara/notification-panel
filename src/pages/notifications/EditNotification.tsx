@@ -16,6 +16,7 @@ const schema = z.object({
   title: z.string().min(1, 'Title required'),
   body: z.string().min(1, 'Body required'),
   scheduledAt: z.string().optional(),
+  link: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -25,7 +26,7 @@ export default function EditNotification() {
   const [notif, setNotif] = useState<Notification | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
@@ -33,7 +34,7 @@ export default function EditNotification() {
     if (!id) return;
     notificationsApi.getById(id).then((n) => {
       setNotif(n);
-      if (n) reset({ title: n.title, body: n.body, scheduledAt: n.scheduledAt });
+      if (n) reset({ title: n.title, body: n.body, scheduledAt: n.scheduledAt, link: n.link });
     });
   }, [id, reset]);
 
@@ -45,6 +46,7 @@ export default function EditNotification() {
         title: data.title,
         body: data.body,
         scheduledAt: data.scheduledAt,
+        link: data.link,
       });
       toast.success('Saved successfully');
       navigate(`/notifications/${notif.id}`);
@@ -81,6 +83,29 @@ export default function EditNotification() {
             <Label className="text-xs font-semibold mb-1.5 block">Body</Label>
             <Textarea {...register('body')} rows={4} className="bg-background resize-none" />
             {errors.body && <p className="text-xs text-destructive mt-1">{errors.body.message}</p>}
+          </div>
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Deep Link (Internal path)</Label>
+            <Input {...register('link')} placeholder="e.g. /(tabs)/chat or /try-on" className="bg-background" />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[
+                { label: 'Chat', path: '/(tabs)/chat' },
+                { label: 'Wardrobe', path: '/(tabs)/wardrobe' },
+                { label: 'Try-On', path: '/try-on' },
+                { label: 'Notifications', path: '/notifications' },
+                { label: 'Settings', path: '/settings' },
+              ].map((s) => (
+                <button
+                  key={s.path}
+                  type="button"
+                  onClick={() => setValue('link', s.path)}
+                  className="px-2 py-0.5 rounded border border-border bg-secondary/50 text-[10px] font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Leave empty for default app opening behavior.</p>
           </div>
         </div>
 

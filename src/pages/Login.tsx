@@ -120,7 +120,12 @@ export default function Login() {
 
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-foreground mb-1.5">Welcome back</h1>
-            <p className="text-muted-foreground text-sm">Sign in to access your notification dashboard</p>
+            <p className="text-muted-foreground text-sm">
+              Sign in as admin to access your notification dashboard
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground/80">
+              {import.meta.env.VITE_ADMIN_EMAIL || 'admin@elara.style'}
+            </p>
           </div>
 
           <button
@@ -142,7 +147,7 @@ export default function Login() {
             </div>
             <div className="relative flex justify-center">
               <span className="bg-background px-3 text-xs text-muted-foreground">
-                Demo mode — no real OAuth required
+                Demo mode — mock sign-in, real backend when VITE_ADMIN_TOKEN is set
               </span>
             </div>
           </div>
