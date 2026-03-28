@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FCM Token Diagnostic</title>
+  <style>
+    body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+    button { padding: 12px 24px; font-size: 16px; cursor: pointer; margin: 8px 4px; border: none; border-radius: 6px; }
+    #getToken { background: #4caf50; color: white; }
+    #clearAll { background: #ff5722; color: white; }
+    #log { white-space: pre-wrap; background: #0f0f23; padding: 16px; border-radius: 8px; margin-top: 16px; max-height: 70vh; overflow-y: auto; font-size: 13px; line-height: 1.6; }
+    .ok { color: #4caf50; } .err { color: #ff5252; } .warn { color: #ffab40; } .info { color: #42a5f5; }
+    #tokenBox { background: #1b5e20; padding: 12px; border-radius: 6px; margin-top: 12px; word-break: break-all; display: none; }
+  </style>
+</head>
+<body>
+  <h2>FCM Web Token — Diagnostic Tool</h2>
+  <button id="getToken">Get FCM Token</button>
+  <button id="clearAll">Clear All SW &amp; Subscriptions</button>
+  <div id="tokenBox"></div>
+  <div id="log"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
+  <script>
+    const VAPID_KEY = 'BMxP4Yxm0snqh7lE5Fr3Zlm9Uf9UwH3y5PXIUzx2IKWSHPKtZaYwS0HKXK0-INhCXl-qM36f5xJucuFsh2pB2r0';
+
+    const logEl = document.getElementById('log');
+    const tokenBox = document.getElementById('tokenBox');
+
+    function log(msg, cls = '') {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = msg + '\n';
+      logEl.appendChild(span);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Initialize Firebase
+    const app = firebase.initializeApp({
+      apiKey: 'AIzaSyBXdSU9bMdGNC7qZneh3KJB1jgQaRM8W4g',
+      authDomain: 'elara-261bc.firebaseapp.com',
+      projectId: 'elara-261bc',
+      storageBucket: 'elara-261bc.firebasestorage.app',
+      messagingSenderId: '61069444020',
+      appId: '1:61069444020:web:572ceed3cbe786de9968e1',
+      measurementId: 'G-Z2RD28G3SN',
+    });
+
+    document.getElementById('clearAll').onclick = async () => {
+      logEl.innerHTML = '';
+      log('=== Clearing all service workers & push subscriptions ===', 'warn');
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        log('Found ' + regs.length + ' service worker registration(s)', 'info');
+        for (const reg of regs) {
+          try {
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+              await sub.unsubscribe();
+              log('  Unsubscribed push subscription on scope: ' + reg.scope, 'ok');
+            }
+          } catch (e) { log('  Push unsub error: ' + e.message, 'warn'); }
+          await reg.unregister();
+          log('  Unregistered SW: ' + reg.scope, 'ok');
+        }
+        log('Done. Now hard-refresh (Cmd+Shift+R) and click "Get FCM Token".', 'ok');
+      } catch (e) {
+        log('Error: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('getToken').onclick = async () => {
+      logEl.innerHTML = '';
+      tokenBox.style.display = 'none';
+      log('=== FCM Token Diagnostic ===', 'info');
+
+      // Step 1: Check prerequisites
+      log('\n[1] Checking prerequisites...', 'info');
+      log('  Secure context: ' + window.isSecureContext, window.isSecureContext ? 'ok' : 'err');
+      log('  Notification API: ' + ('Notification' in window), 'ok');
+      log('  ServiceWorker API: ' + ('serviceWorker' in navigator), 'ok');
+      log('  Current permission: ' + Notification.permission, Notification.permission === 'granted' ? 'ok' : 'warn');
+
+      // Step 2: Request permission
+      log('\n[2] Requesting notification permission...', 'info');
+      const perm = await Notification.requestPermission();
+      log('  Result: ' + perm, perm === 'granted' ? 'ok' : 'err');
+      if (perm !== 'granted') {
+        log('STOPPED: Permission not granted.', 'err');
+        return;
+      }
+
+      // Step 3: Clear stale push subscriptions
+      log('\n[3] Clearing stale push subscriptions...', 'info');
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of regs) {
+          try {
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+              await sub.unsubscribe();
+              log('  Cleared stale subscription on: ' + reg.scope, 'ok');
+            }
+          } catch (e) { /* ignore */ }
+        }
+        log('  Done clearing stale subscriptions', 'ok');
+      } catch (e) {
+        log('  Warning: ' + e.message, 'warn');
+      }
+
+      // Step 4: Register service worker
+      log('\n[4] Registering service worker...', 'info');
+      let swReg;
+      try {
+        swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/',
+          updateViaCache: 'none',
+        });
+        log('  Registered. State: ' + (swReg.active ? 'active' : swReg.installing ? 'installing' : 'waiting'), 'ok');
+      } catch (e) {
+        log('  SW registration failed: ' + e.message, 'err');
+        return;
+      }
+
+      // Step 5: Wait for ready
+      log('\n[5] Waiting for SW to become active...', 'info');
+      const readyReg = await navigator.serviceWorker.ready;
+      log('  SW active. Scope: ' + readyReg.scope, 'ok');
+
+      // Step 6: Clear subscription on this registration too
+      log('\n[6] Clearing subscription on active registration...', 'info');
+      try {
+        const sub = await readyReg.pushManager.getSubscription();
+        if (sub) {
+          await sub.unsubscribe();
+          log('  Cleared existing subscription', 'ok');
+        } else {
+          log('  No existing subscription', 'ok');
+        }
+      } catch (e) {
+        log('  Warning: ' + e.message, 'warn');
+      }
+
+      // Step 7: Try raw PushManager.subscribe first to isolate push service issues
+      log('\n[7] Testing raw PushManager.subscribe...', 'info');
+      try {
+        const rawSub = await readyReg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: VAPID_KEY,
+        });
+        log('  Raw push subscription SUCCESS', 'ok');
+        log('  Endpoint: ' + rawSub.endpoint.substring(0, 80) + '...', 'info');
+        // Unsubscribe so getToken can create its own
+        await rawSub.unsubscribe();
+        log('  Unsubscribed (will let Firebase re-subscribe)', 'ok');
+      } catch (e) {
+        log('  Raw push subscribe FAILED: ' + e.message, 'err');
+        log('', '');
+        log('  This is a browser/network level error, NOT a code issue.', 'warn');
+        log('  Possible causes:', 'warn');
+        log('    1. Browser push service is down or blocked by network/VPN/firewall', 'warn');
+        log('    2. Try: chrome://settings/content/notifications → check this site is allowed', 'warn');
+        log('    3. Try: Quit Chrome completely, reopen, and try again', 'warn');
+        log('    4. Try: A different browser (Edge, Firefox)', 'warn');
+        log('    5. Try: Disable VPN/proxy if active', 'warn');
+        return;
+      }
+
+      // Step 8: Get FCM token via Firebase SDK
+      log('\n[8] Requesting FCM token from Firebase...', 'info');
+      log('  VAPID key: ' + VAPID_KEY.substring(0, 20) + '...' + VAPID_KEY.substring(VAPID_KEY.length - 10), 'info');
+      try {
+        const messaging = firebase.messaging();
+        const token = await messaging.getToken({
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: readyReg,
+        });
+        if (token) {
+          log('\n✅ SUCCESS! FCM Token:', 'ok');
+          log(token, 'ok');
+          tokenBox.style.display = 'block';
+          tokenBox.textContent = token;
+        } else {
+          log('  No token returned', 'err');
+        }
+      } catch (e) {
+        log('  Firebase getToken error: ' + e.message, 'err');
+        log('  Error code: ' + (e.code || 'none'), 'err');
+      }
+    };
+  </script>
+</body>
+</html>

@@ -272,3 +272,36 @@ export const segmentsApi = {
     return { estimatedCount: count, breakdown: segment };
   },
 };
+
+// --- Device tokens (admin + user registration) — uses same `api` + VITE_API_URL as rest of app
+export const deviceTokensApi = {
+  register: async (payload: {
+    platform: 'ios' | 'android' | 'web';
+    token: string;
+    appVersion?: string;
+  }) => {
+    const res = await api.post<{ data?: unknown }>('/device-tokens', payload);
+    return res?.data;
+  },
+
+  unregister: async (token: string) => {
+    await api.delete(`/device-tokens/${encodeURIComponent(token)}`);
+  },
+
+  myTokens: async () => {
+    const res = await api.get<{ data?: unknown[] }>('/device-tokens/me');
+    return res?.data ?? [];
+  },
+
+  stats: async () => {
+    const res = await api.get<{
+      data?: { total: number; byPlatform: Array<{ _id: string; count: number }> };
+    }>('/admin/device-tokens/stats');
+    return res?.data ?? { total: 0, byPlatform: [] };
+  },
+
+  byUser: async (userId: string) => {
+    const res = await api.get<{ data?: unknown[] }>(`/admin/device-tokens/user/${userId}`);
+    return res?.data ?? [];
+  },
+};
