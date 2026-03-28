@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import {
   Search, Plus, MoreHorizontal, Send, Copy, Pencil, Trash2, XCircle, RefreshCw,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  Link, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -183,7 +183,10 @@ export default function NotificationList() {
                 className={`grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3.5 border-b border-border hover:bg-secondary/40 cursor-pointer transition-colors last:border-0 ${actionLoading === n.id ? 'opacity-50 pointer-events-none' : ''}`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
+                  <div className="flex items-center gap-1.5 overflow-hidden">
+                    <p className="text-sm font-medium text-foreground truncate">{n.title}</p>
+                    {n.link && <Link className="w-3 h-3 text-primary flex-shrink-0" />}
+                  </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">{n.body}</p>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     {format(new Date(n.createdAt), 'MMM d, yyyy')}

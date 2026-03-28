@@ -29,6 +29,7 @@ const schema = z.object({
   sendMode: z.enum(['instant', 'scheduled']),
   scheduledAt: z.string().optional(),
   templateId: z.string().optional(),
+  link: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -69,6 +70,7 @@ export default function CreateNotification() {
   const applyTemplate = (tpl: Template) => {
     setValue('title', tpl.title);
     setValue('body', tpl.body);
+    setValue('link', tpl.linkTemplate || '');
     setValue('templateId', tpl.id);
     setShowTemplatePanel(false);
     toast.success('Template applied', { description: tpl.name });
@@ -107,6 +109,7 @@ export default function CreateNotification() {
         sendMode: data.sendMode,
         scheduledAt: data.sendMode === 'scheduled' ? data.scheduledAt : undefined,
         templateId: data.templateId || undefined,
+        link: data.link || undefined,
       };
 
       const notif = await notificationsApi.create(payload);
@@ -187,6 +190,29 @@ export default function CreateNotification() {
             <Label className="text-xs font-semibold mb-1.5 block">Body <span className="text-destructive">*</span></Label>
             <Textarea {...register('body')} placeholder="Write your notification message..." rows={3} className="bg-background resize-none" />
             {errors.body && <p className="text-xs text-destructive mt-1">{errors.body.message}</p>}
+          </div>
+          <div>
+            <Label className="text-xs font-semibold mb-1.5 block">Deep Link (Internal path)</Label>
+            <Input {...register('link')} placeholder="e.g. /(tabs)/chat or /try-on" className="bg-background" />
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[
+                { label: 'Chat', path: '/(tabs)/chat' },
+                { label: 'Wardrobe', path: '/(tabs)/wardrobe' },
+                { label: 'Try-On', path: '/try-on' },
+                { label: 'Notifications', path: '/notifications' },
+                { label: 'Settings', path: '/settings' },
+              ].map((s) => (
+                <button
+                  key={s.path}
+                  type="button"
+                  onClick={() => setValue('link', s.path)}
+                  className="px-2 py-0.5 rounded border border-border bg-secondary/50 text-[10px] font-medium text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2">Leave empty for default app opening behavior.</p>
           </div>
         </div>
 

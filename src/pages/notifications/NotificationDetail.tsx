@@ -283,6 +283,14 @@ export default function NotificationDetail() {
                     ))}
                   </dd>
                 </div>
+                {notif.link && (
+                  <div>
+                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Deep Link</dt>
+                    <dd className="text-sm font-mono text-primary bg-primary/5 px-2 py-0.5 rounded border border-primary/10 inline-block overflow-hidden max-w-full truncate">
+                      {notif.link}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Created</dt>
                   <dd className="flex items-center gap-1.5 text-sm text-foreground">

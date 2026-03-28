@@ -27,6 +27,7 @@ export interface Notification {
   segment?: Segment;
   sendMode: SendMode;
   scheduledAt?: string;
+  link?: string;
   status: NotificationStatus;
   templateId?: string;
   templateData?: Record<string, string>;
@@ -40,6 +41,7 @@ export interface Template {
   name: string;
   title: string;
   body: string;
+  linkTemplate?: string;
   variables: string[];
   isActive: boolean;
   createdAt: string;
