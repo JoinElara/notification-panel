@@ -1,5 +1,13 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL || 'http://localhost:6900/api/v2';
+/**
+ * Base URL for backend-admin (Nest global prefix `api`, routes `/admin/...`).
+ * - Dev: default `/api` → Vite proxies `/api` → backend (see vite.config server.proxy)
+ * - Prod: set VITE_API_URL to e.g. https://your-host.com/api
+ */
+const API_BASE = (
+  import.meta.env.VITE_API_URL ??
+  import.meta.env.VITE_API_BASE_URL ??
+  '/api'
+).replace(/\/$/, '');
 
 let authToken: string | null = null;
 
@@ -21,7 +29,10 @@ async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  const url =
+    path.startsWith('http://') || path.startsWith('https://')
+      ? path
+      : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
   const res = await fetch(url, {
     ...options,
     headers: { ...getHeaders(), ...(options.headers as Record<string, string>) },
@@ -29,9 +40,15 @@ async function request<T>(
 
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    const msg =
-      errBody?.message || errBody?.error?.message || res.statusText;
-    throw new Error(msg || `Request failed: ${res.status}`);
+    const raw = errBody?.message ?? errBody?.error?.message;
+    const msg = Array.isArray(raw)
+      ? raw.map((e: { property?: string; constraints?: Record<string, string> }) =>
+          e?.property && e?.constraints
+            ? `${e.property}: ${Object.values(e.constraints).join(', ')}`
+            : JSON.stringify(e),
+        ).join('; ')
+      : raw;
+    throw new Error(msg || res.statusText || `Request failed: ${res.status}`);
   }
 
   const json = await res.json().catch(() => null);

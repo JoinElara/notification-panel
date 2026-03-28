@@ -1,5 +1,14 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+} from 'react';
 import { setAuthToken } from '@/services/api';
+import { loginRequest, meRequest, type AuthUserDto } from '@/services/authApi';
+
+const TOKEN_KEY = 'elara_notification_admin_token';
 
 export interface AdminUser {
   id: string;
@@ -12,46 +21,82 @@ export interface AdminUser {
 interface AuthContextType {
   user: AdminUser | null;
   isLoading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const getAdminEmail = () =>
-  (import.meta.env.VITE_ADMIN_EMAIL || 'admin@elara.style').trim().toLowerCase();
-
-const getMockUser = (): AdminUser => {
-  const email = getAdminEmail();
+function toAdminUser(dto: AuthUserDto): AdminUser {
   return {
-    id: 'admin-001',
-    name: 'Admin User',
-    email,
-    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}&backgroundColor=b6e3f4`,
+    id: dto.id,
+    name: dto.name || dto.email.split('@')[0] || 'Admin',
+    email: dto.email,
+    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(dto.email)}&backgroundColor=b6e3f4`,
     role: 'admin',
   };
-};
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const signInWithGoogle = useCallback(async () => {
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    const token = import.meta.env.VITE_ADMIN_TOKEN;
-    if (token) setAuthToken(token);
-    setUser(getMockUser());
-    setIsLoading(false);
-  }, []);
+  const [isLoading, setIsLoading] = useState(true);
 
   const signOut = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
     setAuthToken(null);
     setUser(null);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const token = localStorage.getItem(TOKEN_KEY)?.trim();
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+      setAuthToken(token);
+      try {
+        const res = await meRequest();
+        if (!cancelled && res?.user) {
+          setUser(toAdminUser(res.user));
+        }
+      } catch {
+        if (!cancelled) {
+          localStorage.removeItem(TOKEN_KEY);
+          setAuthToken(null);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const res = await loginRequest(email.trim(), password);
+      if (!res?.access_token) {
+        throw new Error('No access token');
+      }
+      localStorage.setItem(TOKEN_KEY, res.access_token);
+      setAuthToken(res.access_token);
+      if (res.user) {
+        setUser(toAdminUser(res.user));
+      } else {
+        const me = await meRequest();
+        if (me?.user) setUser(toAdminUser(me.user));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
