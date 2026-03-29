@@ -1,26 +1,41 @@
 import { initializeApp, getApps, type FirebaseOptions } from 'firebase/app';
 import { getMessaging, getToken, deleteToken, isSupported, onMessage } from 'firebase/messaging';
 
-const firebaseConfig: FirebaseOptions = {
-  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || 'AIzaSyBXdSU9bMdGNC7qZneh3KJB1jgQaRM8W4g',
-  authDomain:
-    (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN ||
-    'elara-261bc.firebaseapp.com',
-  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || 'elara-261bc',
-  storageBucket:
-    (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET ||
-    'elara-261bc.firebasestorage.app',
-  messagingSenderId:
-    (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '61069444020',
-  appId:
-    (import.meta as any).env?.VITE_FIREBASE_APP_ID ||
-    '1:61069444020:web:572ceed3cbe786de9968e1',
-  measurementId:
-    (import.meta as any).env?.VITE_FIREBASE_MEASUREMENT_ID || 'G-Z2RD28G3SN',
-};
+function readFirebaseWebConfig(): FirebaseOptions {
+  const e = import.meta.env;
+  const apiKey = e.VITE_FIREBASE_API_KEY?.trim();
+  const authDomain = e.VITE_FIREBASE_AUTH_DOMAIN?.trim();
+  const projectId = e.VITE_FIREBASE_PROJECT_ID?.trim();
+  const storageBucket = e.VITE_FIREBASE_STORAGE_BUCKET?.trim();
+  const messagingSenderId = e.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim();
+  const appId = e.VITE_FIREBASE_APP_ID?.trim();
+  const measurementId = e.VITE_FIREBASE_MEASUREMENT_ID?.trim();
+
+  if (!apiKey || !authDomain || !projectId || !storageBucket || !messagingSenderId || !appId) {
+    throw new Error(
+      'Missing Firebase Web config. Set VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, ' +
+        'VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_MESSAGING_SENDER_ID, ' +
+        'VITE_FIREBASE_APP_ID in .env (see .env.example).',
+    );
+  }
+
+  const config: FirebaseOptions = {
+    apiKey,
+    authDomain,
+    projectId,
+    storageBucket,
+    messagingSenderId,
+    appId,
+  };
+  if (measurementId) config.measurementId = measurementId;
+  return config;
+}
+
+let firebaseConfig: FirebaseOptions | null = null;
 
 function getOrCreateApp() {
   if (getApps().length > 0) return getApps()[0];
+  if (!firebaseConfig) firebaseConfig = readFirebaseWebConfig();
   return initializeApp(firebaseConfig);
 }
 
@@ -64,7 +79,7 @@ export async function getWebFcmToken(): Promise<string> {
     );
   }
 
-  const vapidKey = (import.meta as any).env?.VITE_FIREBASE_VAPID_KEY;
+  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim();
   if (!vapidKey) {
     throw new Error('Missing VITE_FIREBASE_VAPID_KEY in frontend env');
   }

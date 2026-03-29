@@ -1,20 +1,23 @@
 /* eslint-disable no-undef */
-importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js');
+/**
+ * Template — values filled by scripts/generate-firebase-messaging-sw.mjs from env.
+ * Keep compat SDK version roughly aligned with the `firebase` npm package major.
+ */
+importScripts('https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyBXdSU9bMdGNC7qZneh3KJB1jgQaRM8W4g',
-  authDomain: 'elara-261bc.firebaseapp.com',
-  projectId: 'elara-261bc',
-  storageBucket: 'elara-261bc.firebasestorage.app',
-  messagingSenderId: '61069444020',
-  appId: '1:61069444020:web:572ceed3cbe786de9968e1',
-  measurementId: 'G-Z2RD28G3SN',
+  apiKey: '%%VITE_FIREBASE_API_KEY%%',
+  authDomain: '%%VITE_FIREBASE_AUTH_DOMAIN%%',
+  projectId: '%%VITE_FIREBASE_PROJECT_ID%%',
+  storageBucket: '%%VITE_FIREBASE_STORAGE_BUCKET%%',
+  messagingSenderId: '%%VITE_FIREBASE_MESSAGING_SENDER_ID%%',
+  appId: '%%VITE_FIREBASE_APP_ID%%',
+  measurementId: '%%VITE_FIREBASE_MEASUREMENT_ID%%',
 });
 
 const messaging = firebase.messaging();
 
-// Handle background push messages (when tab is not focused)
 messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || payload.data?.title || 'Elara';
   const options = {
@@ -26,7 +29,6 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(title, options);
 });
 
-// Handle notification click
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
@@ -35,6 +37,6 @@ self.addEventListener('notificationclick', (event) => {
         return clientList[0].focus();
       }
       return clients.openWindow('/');
-    })
+    }),
   );
 });

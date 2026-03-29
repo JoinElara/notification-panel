@@ -11,6 +11,8 @@ node_modules
 .env
 .env.*
 !.env.example
+# Generated from scripts/firebase-messaging-sw.template.js + VITE_FIREBASE_* env vars
+public/firebase-messaging-sw.js
 dist
 .env
 .env.local

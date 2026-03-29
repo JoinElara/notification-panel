@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "generate:firebase-sw": "node scripts/generate-firebase-messaging-sw.mjs",
+    "predev": "node scripts/generate-firebase-messaging-sw.mjs development",
+    "prebuild": "node scripts/generate-firebase-messaging-sw.mjs production",
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
