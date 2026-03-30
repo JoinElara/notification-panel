@@ -193,14 +193,22 @@ export default function CreateNotification() {
           </div>
           <div>
             <Label className="text-xs font-semibold mb-1.5 block">Deep Link (Internal path)</Label>
-            <Input {...register('link')} placeholder="e.g. /(tabs)/chat or /try-on" className="bg-background" />
+            <Input {...register('link')} placeholder="e.g. /chat or /wardrobe/123" className="bg-background" />
             <div className="flex flex-wrap gap-1.5 mt-2">
               {[
-                { label: 'Chat', path: '/(tabs)/chat' },
-                { label: 'Wardrobe', path: '/(tabs)/wardrobe' },
-                { label: 'Try-On', path: '/try-on' },
+                { label: 'Home', path: '/' },
+                { label: 'Wardrobe', path: '/wardrobe' },
+                { label: 'Playground', path: '/wardrobe/playground' },
+                { label: 'Chat', path: '/chat' },
+                { label: 'Search', path: '/search-chats' },
+                { label: 'Wishlist', path: '/wishlist' },
+                { label: 'Saved Outfits', path: '/saved-outfits' },
                 { label: 'Notifications', path: '/notifications' },
-                { label: 'Settings', path: '/settings' },
+                { label: 'Outfit Detail', path: '/outfit-detail' },
+                { label: 'Virtual Try-On', path: '/try-on' },
+                { label: 'Forgot PW', path: '/forgot-password' },
+                { label: 'Onboarding', path: '/onboarding' },
+                { label: 'Walkthrough', path: '/walkthrough' },
               ].map((s) => (
                 <button
                   key={s.path}
@@ -212,7 +220,8 @@ export default function CreateNotification() {
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">Leave empty for default app opening behavior.</p>
+            {errors.link && <p className="text-xs text-destructive mt-1">{errors.link.message}</p>}
+            <p className="text-[10px] text-muted-foreground mt-2">Specify direct IDs for dynamic routes (e.g., /wardrobe/69c7...).</p>
           </div>
         </div>
 
