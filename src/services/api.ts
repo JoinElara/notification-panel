@@ -41,6 +41,7 @@ function normalizeTemplate(raw: Record<string, unknown>): Template {
     name: String(raw.name ?? ''),
     title: String(raw.titleTemplate ?? raw.title ?? ''),
     body: String(raw.bodyTemplate ?? raw.body ?? ''),
+    htmlTemplate: (raw.htmlTemplate as string | undefined) ?? undefined,
     linkTemplate: raw.linkTemplate as string | undefined,
     variables: Array.isArray(raw.variables) ? raw.variables : [],
     isActive: Boolean(raw.isActive ?? true),
@@ -232,7 +233,33 @@ export const templatesApi = {
     );
     const d = res?.data ?? res;
     if (!d) throw new Error('Template not found');
-    return { title: String(d.title ?? ''), body: String(d.body ?? '') };
+    return {
+      title: String(d.title ?? ''),
+      body: String(d.body ?? ''),
+      html: d.html ? String(d.html) : undefined,
+    };
+  },
+
+  upsert: async (payload: {
+    name: string;
+    titleTemplate?: string;
+    bodyTemplate?: string;
+    htmlTemplate?: string;
+    variables?: string[];
+    isActive?: boolean;
+  }) => {
+    const res = await api.post<{ data: Record<string, unknown> }>(
+      '/admin/notification-templates/upsert',
+      payload
+    );
+    return res?.data ? normalizeTemplate(res.data) : (null as Template);
+  },
+
+  importEmailTemplates: async () => {
+    const res = await api.post<{ data?: { imported: number; updated: number; total: number } }>(
+      '/admin/notification-templates/import-email-templates'
+    );
+    return res?.data ?? { imported: 0, updated: 0, total: 0 };
   },
 
   remove: async (id: string) => {

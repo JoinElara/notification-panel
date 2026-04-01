@@ -18,6 +18,7 @@ import { Switch } from '@/components/ui/switch';
 interface PreviewResult {
   title: string;
   body: string;
+  html?: string;
 }
 
 export default function TemplateList() {
@@ -30,8 +31,15 @@ export default function TemplateList() {
   const [previewResult, setPreviewResult]       = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing]             = useState(false);
 
-  const [form, setForm]       = useState({ name: '', title: '', body: '' });
+  const [form, setForm] = useState({
+    name: '',
+    title: '',
+    body: '',
+    htmlTemplate: '',
+    isActive: true,
+  });
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,22 +51,43 @@ export default function TemplateList() {
   useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
-    if (!form.name || !form.title || !form.body) {
-      toast.error('All fields required');
+    if (!form.name || (!form.title && !form.body && !form.htmlTemplate)) {
+      toast.error('Name and at least one template field are required');
       return;
     }
-    const matches = [...form.title.matchAll(/{{(\w+)}}/g), ...form.body.matchAll(/{{(\w+)}}/g)];
+    const sourceText = `${form.title}\n${form.body}\n${form.htmlTemplate}`;
+    const matches = [...sourceText.matchAll(/{{(\w+)}}/g)];
     const variables = [...new Set(matches.map((m) => m[1]))];
 
     setCreating(true);
     try {
-      await templatesApi.create({ ...form, variables });
-      toast.success('Template created');
+      await templatesApi.upsert({
+        name: form.name.trim(),
+        titleTemplate: form.title || undefined,
+        bodyTemplate: form.body || undefined,
+        htmlTemplate: form.htmlTemplate || undefined,
+        variables,
+        isActive: form.isActive,
+      });
+      toast.success('Template saved');
       setCreateOpen(false);
-      setForm({ name: '', title: '', body: '' });
+      setForm({ name: '', title: '', body: '', htmlTemplate: '', isActive: true });
       load();
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleImportTemplates = async () => {
+    setImporting(true);
+    try {
+      const res = await templatesApi.importEmailTemplates();
+      toast.success('Templates imported', {
+        description: `Imported: ${res.imported}, Updated: ${res.updated}, Total files: ${res.total}`,
+      });
+      await load();
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -102,9 +131,14 @@ export default function TemplateList() {
           <h2 className="text-xl font-bold text-foreground">Templates</h2>
           <p className="text-sm text-muted-foreground">Reusable notification templates with dynamic variables</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> New Template
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleImportTemplates} disabled={importing}>
+            {importing ? 'Importing...' : 'Import HTML Templates'}
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> New Template
+          </Button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -171,7 +205,7 @@ export default function TemplateList() {
             <DialogTitle>New Template</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4 mt-2">
-            <p className="text-xs text-muted-foreground">Use <code className="bg-secondary px-1 py-0.5 rounded text-xs">{'{{variable}}'}</code> in title/body to define dynamic variables.</p>
+            <p className="text-xs text-muted-foreground">Use <code className="bg-secondary px-1 py-0.5 rounded text-xs">{'{{variable}}'}</code> in title/body/html to define dynamic variables.</p>
             <div>
               <Label className="text-xs font-semibold mb-1.5 block">Template Name</Label>
               <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Order Shipped" className="bg-background" />
@@ -183,6 +217,20 @@ export default function TemplateList() {
             <div>
               <Label className="text-xs font-semibold mb-1.5 block">Body</Label>
               <Textarea value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} placeholder="Message body with {{variables}}..." rows={4} className="bg-background resize-none" />
+            </div>
+            <div>
+              <Label className="text-xs font-semibold mb-1.5 block">HTML Template (optional)</Label>
+              <Textarea
+                value={form.htmlTemplate}
+                onChange={(e) => setForm((f) => ({ ...f, htmlTemplate: e.target.value }))}
+                placeholder="<html><body>Hi {{user}}</body></html>"
+                rows={6}
+                className="bg-background font-mono text-xs"
+              />
+            </div>
+            <div className="flex items-center justify-between border rounded-md px-3 py-2">
+              <Label className="text-xs font-semibold">Active</Label>
+              <Switch checked={form.isActive} onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))} />
             </div>
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={() => setCreateOpen(false)} className="flex-1">Cancel</Button>
@@ -228,6 +276,9 @@ export default function TemplateList() {
                   <p className="text-xs text-muted-foreground mb-2 font-semibold">PREVIEW</p>
                   <p className="text-sm font-bold text-foreground mb-1">{previewResult.title}</p>
                   <p className="text-xs text-muted-foreground">{previewResult.body}</p>
+                  {previewResult.html && (
+                    <p className="text-[10px] text-muted-foreground mt-2">HTML available for email rendering.</p>
+                  )}
                 </motion.div>
               )}
             </div>

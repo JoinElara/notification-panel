@@ -41,6 +41,7 @@ export interface Template {
   name: string;
   title: string;
   body: string;
+  htmlTemplate?: string;
   linkTemplate?: string;
   variables: string[];
   isActive: boolean;
