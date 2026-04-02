@@ -15,6 +15,7 @@ import EditNotification from "@/pages/notifications/EditNotification";
 import TemplateList from "@/pages/templates/TemplateList";
 import SegmentEstimator from "@/pages/segments/SegmentEstimator";
 import DeviceTokens from "@/pages/DeviceTokens";
+import Automations from "@/pages/automations/Automations";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,9 @@ const App = () => (
               } />
               <Route path="/device-tokens" element={
                 <ProtectedRoute><AppLayout><DeviceTokens /></AppLayout></ProtectedRoute>
+              } />
+              <Route path="/automations" element={
+                <ProtectedRoute><AppLayout><Automations /></AppLayout></ProtectedRoute>
               } />
               <Route path="*" element={<NotFound />} />
             </Routes>

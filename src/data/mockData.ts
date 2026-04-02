@@ -49,6 +49,36 @@ export interface Template {
   usageCount: number;
 }
 
+/** Elara-Backend-v1 automation rules (event → email/push) */
+export interface AutomationRule {
+  id: string;
+  eventName: string;
+  enabled: boolean;
+  channels: Array<'email' | 'push'>;
+  templateName: string;
+  titleFallback?: string;
+  bodyFallback?: string;
+  conditions: Record<string, unknown>;
+  cooldownMinutes: number;
+  maxSendsPerUser?: number;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AutomationDeliveryLogEntry {
+  id: string;
+  ruleId: string;
+  eventName: string;
+  userId: string;
+  channel: 'email' | 'push';
+  templateName?: string;
+  status: 'sent' | 'failed' | 'skipped';
+  errorMessage?: string;
+  sentAt?: string;
+  createdAt: string;
+}
+
 export interface DeliveryLog {
   id: string;
   notificationId: string;

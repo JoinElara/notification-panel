@@ -5,8 +5,9 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, path.resolve(__dirname), "");
-  // Backend must be running (e.g. backend-admin: pnpm start:dev). Override if PORT differs.
-  const apiProxyTarget = env.VITE_PROXY_TARGET || "http://127.0.0.1:3000";
+  const adminProxyTarget = env.VITE_PROXY_TARGET || "http://127.0.0.1:3000";
+  const mainProxyTarget =
+    env.VITE_MAIN_PROXY_TARGET || "http://127.0.0.1:6900";
 
   return {
   server: {
@@ -16,8 +17,13 @@ export default defineConfig(({ mode }) => {
       overlay: false,
     },
     proxy: {
+      // Elara-Backend-v1 (automation rules, etc.) — must be before `/api` so `/api/v2` is not swallowed
+      "/api/v2": {
+        target: mainProxyTarget,
+        changeOrigin: true,
+      },
       "/api": {
-        target: apiProxyTarget,
+        target: adminProxyTarget,
         changeOrigin: true,
       },
     },

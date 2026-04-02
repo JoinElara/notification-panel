@@ -6,6 +6,7 @@ import {
   FileText,
   PieChart,
   Smartphone,
+  Zap,
   LogOut,
 } from 'lucide-react';
 import {
@@ -29,6 +30,7 @@ const navItems = [
   { title: 'Overview',      url: '/dashboard',     icon: LayoutDashboard },
   { title: 'Notifications', url: '/notifications',  icon: Bell },
   { title: 'Templates',     url: '/templates',      icon: FileText },
+  { title: 'Automations',   url: '/automations',    icon: Zap },
   { title: 'Segments',      url: '/segments',       icon: PieChart },
   { title: 'Device Tokens', url: '/device-tokens',  icon: Smartphone },
 ];

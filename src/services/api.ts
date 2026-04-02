@@ -1,4 +1,4 @@
-import { api, setAuthToken } from '@/lib/api';
+import { api, mainApi, setAuthToken } from '@/lib/api';
 import type {
   Notification,
   Template,
@@ -6,6 +6,8 @@ import type {
   DeliveryLog,
   SegmentOverview,
   DashboardStats,
+  AutomationRule,
+  AutomationDeliveryLogEntry,
 } from '@/data/mockData';
 
 export { setAuthToken };
@@ -264,6 +266,130 @@ export const templatesApi = {
 
   remove: async (id: string) => {
     await api.delete(`/admin/notification-templates/${id}`);
+  },
+};
+
+function normalizeAutomationRule(raw: Record<string, unknown>): AutomationRule {
+  return {
+    id: toId(raw as { _id?: string; id?: string }),
+    eventName: String(raw.eventName ?? ''),
+    enabled: Boolean(raw.enabled ?? true),
+    channels: Array.isArray(raw.channels) ? (raw.channels as AutomationRule['channels']) : ['email'],
+    templateName: String(raw.templateName ?? ''),
+    titleFallback: raw.titleFallback as string | undefined,
+    bodyFallback: raw.bodyFallback as string | undefined,
+    conditions: (raw.conditions as Record<string, unknown>) ?? {},
+    cooldownMinutes: Number(raw.cooldownMinutes ?? 0),
+    maxSendsPerUser: raw.maxSendsPerUser !== undefined ? Number(raw.maxSendsPerUser) : undefined,
+    priority: Number(raw.priority ?? 0),
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+  };
+}
+
+function normalizeAutomationLog(raw: Record<string, unknown>): AutomationDeliveryLogEntry {
+  const ruleId = raw.ruleId as { toString?: () => string } | string | undefined;
+  const userId = raw.userId as { toString?: () => string } | string | undefined;
+  return {
+    id: toId(raw as { _id?: string; id?: string }),
+    ruleId:
+      typeof ruleId === 'object' && ruleId?.toString
+        ? ruleId.toString()
+        : String(ruleId ?? ''),
+    eventName: String(raw.eventName ?? ''),
+    userId:
+      typeof userId === 'object' && userId?.toString
+        ? userId.toString()
+        : String(userId ?? ''),
+    channel: (raw.channel as AutomationDeliveryLogEntry['channel']) ?? 'email',
+    templateName: raw.templateName as string | undefined,
+    status: (raw.status as AutomationDeliveryLogEntry['status']) ?? 'skipped',
+    errorMessage: raw.errorMessage as string | undefined,
+    sentAt: raw.sentAt ? String(raw.sentAt) : undefined,
+    createdAt: String(raw.createdAt ?? ''),
+  };
+}
+
+// --- Automation: served by Elara-Backend-v1 only (`/api/v2/admin/automation-rules`), not backend-admin ---
+export const automationApi = {
+  listRules: async (): Promise<AutomationRule[]> => {
+    const res = await mainApi.get<{ data?: Record<string, unknown>[] }>('/admin/automation-rules');
+    const list = Array.isArray(res?.data) ? res.data : [];
+    return list.map((r) => normalizeAutomationRule(r));
+  },
+
+  createRule: async (payload: {
+    eventName: string;
+    channels: Array<'email' | 'push'>;
+    templateName: string;
+    titleFallback?: string;
+    bodyFallback?: string;
+    conditions?: Record<string, unknown>;
+    cooldownMinutes?: number;
+    maxSendsPerUser?: number;
+    priority?: number;
+    enabled?: boolean;
+  }) => {
+    const res = await mainApi.post<{ data: Record<string, unknown> }>(
+      '/admin/automation-rules',
+      payload
+    );
+    return res?.data ? normalizeAutomationRule(res.data) : null;
+  },
+
+  updateRule: async (id: string, payload: Partial<AutomationRule>) => {
+    const body: Record<string, unknown> = {};
+    if (payload.enabled !== undefined) body.enabled = payload.enabled;
+    if (payload.channels !== undefined) body.channels = payload.channels;
+    if (payload.templateName !== undefined) body.templateName = payload.templateName;
+    if (payload.titleFallback !== undefined) body.titleFallback = payload.titleFallback;
+    if (payload.bodyFallback !== undefined) body.bodyFallback = payload.bodyFallback;
+    if (payload.conditions !== undefined) body.conditions = payload.conditions;
+    if (payload.cooldownMinutes !== undefined) body.cooldownMinutes = payload.cooldownMinutes;
+    if (payload.maxSendsPerUser !== undefined) body.maxSendsPerUser = payload.maxSendsPerUser;
+    if (payload.priority !== undefined) body.priority = payload.priority;
+    const res = await mainApi.put<{ data: Record<string, unknown> }>(
+      `/admin/automation-rules/${id}`,
+      body
+    );
+    return res?.data ? normalizeAutomationRule(res.data) : null;
+  },
+
+  toggleRule: async (id: string, enabled: boolean) => {
+    const res = await mainApi.patch<{ data: Record<string, unknown> }>(
+      `/admin/automation-rules/${id}/toggle`,
+      { enabled }
+    );
+    return res?.data ? normalizeAutomationRule(res.data) : null;
+  },
+
+  deleteRule: async (id: string) => {
+    await mainApi.delete(`/admin/automation-rules/${id}`);
+  },
+
+  deliveryLogs: async (params?: {
+    eventName?: string;
+    userId?: string;
+    status?: 'sent' | 'failed' | 'skipped';
+    page?: number;
+    limit?: number;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.eventName) sp.set('eventName', params.eventName);
+    if (params?.userId) sp.set('userId', params.userId);
+    if (params?.status) sp.set('status', params.status);
+    if (params?.page) sp.set('page', String(params.page));
+    if (params?.limit) sp.set('limit', String(params.limit));
+    const q = sp.toString();
+    const res = await mainApi.get<{
+      data?: Record<string, unknown>[];
+      meta?: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/admin/automation-rules/delivery-logs${q ? `?${q}` : ''}`);
+    const list = Array.isArray(res?.data) ? res.data : [];
+    return {
+      data: list.map((row) => normalizeAutomationLog(row)),
+      meta: res?.meta ?? { page: 1, limit: 50, total: 0, totalPages: 0 },
+    };
   },
 };
 

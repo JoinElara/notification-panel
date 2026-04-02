@@ -72,8 +72,16 @@ export default function CreateNotification() {
     setValue('body', tpl.body);
     setValue('link', tpl.linkTemplate || '');
     setValue('templateId', tpl.id);
+    const currentPlatforms = watch('platforms') || [];
+    if (tpl.htmlTemplate && !currentPlatforms.includes('email')) {
+      setValue('platforms', [...currentPlatforms, 'email'], { shouldValidate: true });
+    }
     setShowTemplatePanel(false);
-    toast.success('Template applied', { description: tpl.name });
+    toast.success('Template applied', {
+      description: tpl.htmlTemplate
+        ? `${tpl.name} (email platform enabled)`
+        : tpl.name,
+    });
   };
 
   const onSubmit = async (data: FormValues) => {

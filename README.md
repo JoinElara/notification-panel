@@ -41,7 +41,7 @@ VITE_FIREBASE_VAPID_KEY=your_web_push_vapid_public_key
 
 Use an admin account in the panel login screen.
 
-- Endpoint used: `POST /auth/admin/login`
+- Endpoint used: `POST /api/auth/login` (see `backend-admin` `AuthController`)
 - Seed one if needed (from backend repo):
 
 ```sh
