@@ -62,6 +62,25 @@ function toTemplatePayload(payload: Partial<Template>): Record<string, unknown> 
   };
 }
 
+export type UserSearchHit = { id: string; email: string; firstName?: string };
+
+// --- Users (admin search for notification recipients) ---
+export const usersApi = {
+  search: async (q: string): Promise<UserSearchHit[]> => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+    const res = await api.get<{ data: UserSearchHit[] }>(
+      `/admin/users/search?q=${encodeURIComponent(trimmed)}`
+    );
+    const list = Array.isArray(res?.data) ? res.data : [];
+    return list.map((u) => ({
+      id: String(u.id ?? ''),
+      email: String(u.email ?? ''),
+      firstName: u.firstName,
+    }));
+  },
+};
+
 // --- Notifications ---
 export const notificationsApi = {
   list: async (filters?: { status?: string; search?: string }) => {

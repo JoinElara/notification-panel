@@ -1,19 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { notificationsApi, templatesApi } from '@/services/api';
+import { notificationsApi, templatesApi, usersApi, type UserSearchHit } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { AppleIcon, AndroidIcon, WebIcon, EmailIcon } from '@/components/shared/PlatformIcons';
-import { ArrowLeft, Send, Clock, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Send, Clock, Sparkles, X, Search, Loader2 } from 'lucide-react';
 import type { Platform } from '@/data/mockData';
-import { useEffect } from 'react';
 import type { Template } from '@/data/mockData';
 
 const schema = z.object({
@@ -21,7 +20,8 @@ const schema = z.object({
   body: z.string().min(1, 'Body is required').max(300),
   platforms: z.array(z.enum(['ios', 'android', 'web', 'email'])).min(1, 'Select at least one platform'),
   targetType: z.enum(['all_users', 'specific_users', 'segment']),
-  specificUserIds: z.string().optional(),
+  /** Comma-separated MongoDB user IDs (optional fallback) */
+  manualUserIds: z.string().optional(),
   segmentInactive: z.boolean().optional(),
   segmentPremium: z.boolean().optional(),
   segmentNew: z.boolean().optional(),
@@ -30,6 +30,7 @@ const schema = z.object({
   scheduledAt: z.string().optional(),
   templateId: z.string().optional(),
   link: z.string().optional(),
+  templateVariables: z.record(z.string()).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -49,22 +50,63 @@ export default function CreateNotification() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePanel, setShowTemplatePanel] = useState(false);
+  const [emailSearchQuery, setEmailSearchQuery] = useState('');
+  const [emailSearchResults, setEmailSearchResults] = useState<UserSearchHit[]>([]);
+  const [emailSearchLoading, setEmailSearchLoading] = useState(false);
+  const [selectedRecipients, setSelectedRecipients] = useState<{ id: string; email: string }[]>([]);
 
   const { register, handleSubmit, control, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      platforms: ['ios', 'android'],
+      platforms: ['ios', 'android', 'email'],
       targetType: 'all_users',
       sendMode: 'instant',
+      templateVariables: {},
     },
   });
 
   const targetType = watch('targetType');
   const sendMode = watch('sendMode');
   const selectedTemplateId = watch('templateId');
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   useEffect(() => {
     templatesApi.list().then(setTemplates);
+  }, []);
+
+  useEffect(() => {
+    if (targetType !== 'specific_users') return;
+    const q = emailSearchQuery.trim();
+    if (q.length < 2) {
+      setEmailSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setEmailSearchLoading(true);
+      usersApi
+        .search(q)
+        .then((hits) => {
+          setEmailSearchResults(hits);
+        })
+        .catch(() => {
+          setEmailSearchResults([]);
+        })
+        .finally(() => setEmailSearchLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [emailSearchQuery, targetType]);
+
+  const addRecipient = useCallback((hit: UserSearchHit) => {
+    setSelectedRecipients((prev) => {
+      if (prev.some((r) => r.id === hit.id)) return prev;
+      return [...prev, { id: hit.id, email: hit.email }];
+    });
+    setEmailSearchQuery('');
+    setEmailSearchResults([]);
+  }, []);
+
+  const removeRecipient = useCallback((id: string) => {
+    setSelectedRecipients((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
   const applyTemplate = (tpl: Template) => {
@@ -72,6 +114,12 @@ export default function CreateNotification() {
     setValue('body', tpl.body);
     setValue('link', tpl.linkTemplate || '');
     setValue('templateId', tpl.id);
+    const existingVariables = watch('templateVariables') || {};
+    const nextVariables = tpl.variables.reduce<Record<string, string>>((acc, variableName) => {
+      acc[variableName] = existingVariables[variableName] ?? '';
+      return acc;
+    }, {});
+    setValue('templateVariables', nextVariables, { shouldValidate: true });
     const currentPlatforms = watch('platforms') || [];
     if (tpl.htmlTemplate && !currentPlatforms.includes('email')) {
       setValue('platforms', [...currentPlatforms, 'email'], { shouldValidate: true });
@@ -92,12 +140,14 @@ export default function CreateNotification() {
 
     setIsSubmitting(true);
     try {
-      const userIds = data.specificUserIds
-        ? data.specificUserIds.split(',').map((s) => s.trim()).filter(Boolean)
+      const fromEmail = selectedRecipients.map((r) => r.id);
+      const fromManual = data.manualUserIds
+        ? data.manualUserIds.split(',').map((s) => s.trim()).filter(Boolean)
         : [];
+      const userIds = [...new Set([...fromEmail, ...fromManual])];
 
       if (data.targetType === 'specific_users' && userIds.length === 0) {
-        toast.error('Add at least one user ID');
+        toast.error('Search by email and select at least one user, or paste user IDs');
         setIsSubmitting(false);
         return;
       }
@@ -117,6 +167,11 @@ export default function CreateNotification() {
         sendMode: data.sendMode,
         scheduledAt: data.sendMode === 'scheduled' ? data.scheduledAt : undefined,
         templateId: data.templateId || undefined,
+        templateData: data.templateId
+          ? Object.fromEntries(
+              Object.entries(data.templateVariables || {}).filter(([, value]) => value.trim().length > 0)
+            )
+          : undefined,
         link: data.link || undefined,
       };
 
@@ -224,6 +279,29 @@ export default function CreateNotification() {
           </div>
         </div>
 
+        {selectedTemplate && selectedTemplate.variables.length > 0 && (
+          <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-4">
+            <h3 className="text-sm font-semibold text-foreground">Template Variables</h3>
+            <p className="text-xs text-muted-foreground">
+              Fill optional values for template placeholders. Leave empty to keep default placeholders.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {selectedTemplate.variables.map((variableName) => (
+                <div key={variableName}>
+                  <Label className="text-xs font-semibold mb-1.5 block">
+                    {variableName}
+                  </Label>
+                  <Input
+                    {...register(`templateVariables.${variableName}` as const)}
+                    placeholder={`Value for {{${variableName}}}`}
+                    className="bg-background"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Platforms */}
         <div className="bg-card border border-border rounded-lg p-5">
           <h3 className="text-sm font-semibold text-foreground mb-3">Platforms <span className="text-destructive">*</span></h3>
@@ -271,9 +349,85 @@ export default function CreateNotification() {
           </div>
 
           {targetType === 'specific_users' && (
-            <div>
-              <Label className="text-xs font-semibold mb-1.5 block">User IDs (comma-separated)</Label>
-              <Input {...register('specificUserIds')} placeholder="usr-1a2b, usr-3c4d, ..." className="bg-background" />
+            <div className="flex flex-col gap-4">
+              <div className="relative">
+                <Label className="text-xs font-semibold mb-1.5 block">Find by email</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={emailSearchQuery}
+                    onChange={(e) => setEmailSearchQuery(e.target.value)}
+                    placeholder="Type an email address…"
+                    className="bg-background pl-9"
+                    autoComplete="off"
+                  />
+                  {emailSearchLoading && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
+                  )}
+                </div>
+                {emailSearchQuery.trim().length >= 2 && emailSearchResults.length > 0 && (
+                  <ul
+                    className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-md border border-border bg-popover text-popover-foreground shadow-md"
+                    role="listbox"
+                  >
+                    {emailSearchResults
+                      .filter((h) => !selectedRecipients.some((r) => r.id === h.id))
+                      .map((hit) => (
+                        <li key={hit.id}>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => addRecipient(hit)}
+                          >
+                            <span className="font-medium">{hit.email}</span>
+                            {hit.firstName ? (
+                              <span className="text-muted-foreground ml-2">{hit.firstName}</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                {emailSearchQuery.trim().length >= 2 && !emailSearchLoading && emailSearchResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">No users match that search.</p>
+                )}
+              </div>
+
+              {selectedRecipients.length > 0 && (
+                <div>
+                  <Label className="text-xs font-semibold mb-1.5 block">Selected recipients</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRecipients.map((r) => (
+                      <span
+                        key={r.id}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-secondary px-2 py-1 text-xs"
+                      >
+                        <span className="truncate max-w-[220px]" title={r.email}>{r.email}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeRecipient(r.id)}
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label={`Remove ${r.email}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-xs font-semibold mb-1.5 block text-muted-foreground">
+                  Or paste user IDs (comma-separated, optional)
+                </Label>
+                <Input
+                  {...register('manualUserIds')}
+                  placeholder="MongoDB ObjectIds if you already have them"
+                  className="bg-background font-mono text-xs"
+                />
+              </div>
             </div>
           )}
 
