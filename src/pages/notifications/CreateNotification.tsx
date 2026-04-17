@@ -16,8 +16,22 @@ import type { Platform } from '@/data/mockData';
 import type { Template } from '@/data/mockData';
 
 const schema = z.object({
-  title: z.string().min(1, 'Title is required').max(100),
-  body: z.string().min(1, 'Body is required').max(300),
+  title: z.preprocess(
+    (v) => {
+      if (typeof v !== 'string') return v;
+      const t = stripHandlebarsFromPushCopy(v);
+      return t.length ? t : FALLBACK_PUSH_TITLE;
+    },
+    z.string().min(1).max(200, 'Title must be at most 200 characters'),
+  ),
+  body: z.preprocess(
+    (v) => {
+      if (typeof v !== 'string') return v;
+      const t = stripHandlebarsFromPushCopy(v);
+      return t.length ? t : FALLBACK_PUSH_BODY;
+    },
+    z.string().min(1).max(10_000, 'Body must be at most 10,000 characters'),
+  ),
   platforms: z.array(z.enum(['ios', 'android', 'web', 'email'])).min(1, 'Select at least one platform'),
   targetType: z.enum(['all_users', 'specific_users', 'segment']),
   /** Comma-separated MongoDB user IDs (optional fallback) */
@@ -43,6 +57,21 @@ const PLATFORMS: PlatformEntry[] = [
   { id: 'web',     label: 'Web',     Icon: WebIcon },
   { id: 'email',   label: 'Email',   Icon: EmailIcon },
 ];
+
+/** Filled per recipient by the backend (not required in this form). */
+const RECIPIENT_AUTO_TEMPLATE_VARS = new Set(['user', 'firstName']);
+
+/** Push title/body must not contain `{{var}}` — those belong in Template Variables for the email HTML. */
+function stripHandlebarsFromPushCopy(s: string): string {
+  return s
+    .replace(/\{\{\w+\}\}/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const FALLBACK_PUSH_TITLE = 'Elara';
+const FALLBACK_PUSH_BODY = 'You have an update from Elara.';
 
 
 export default function CreateNotification() {
@@ -110,8 +139,10 @@ export default function CreateNotification() {
   }, []);
 
   const applyTemplate = (tpl: Template) => {
-    setValue('title', tpl.title);
-    setValue('body', tpl.body);
+    const titleClean = stripHandlebarsFromPushCopy(tpl.title);
+    const bodyClean = stripHandlebarsFromPushCopy(tpl.body);
+    setValue('title', titleClean || tpl.name);
+    setValue('body', bodyClean || FALLBACK_PUSH_BODY);
     setValue('link', tpl.linkTemplate || '');
     setValue('templateId', tpl.id);
     const existingVariables = watch('templateVariables') || {};
@@ -251,7 +282,10 @@ export default function CreateNotification() {
           </div>
           <div>
             <Label className="text-xs font-semibold mb-1.5 block">Body <span className="text-destructive">*</span></Label>
-            <Textarea {...register('body')} placeholder="Write your notification message..." rows={3} className="bg-background resize-none" />
+            <Textarea {...register('body')} placeholder="Plain text for push and campaign list — no {{placeholders}} here" rows={3} className="bg-background resize-none" />
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              Use plain language only. Dynamic content belongs in <span className="font-medium">Template Variables</span> below for the email template.
+            </p>
             {errors.body && <p className="text-xs text-destructive mt-1">{errors.body.message}</p>}
           </div>
           <div>
@@ -283,21 +317,38 @@ export default function CreateNotification() {
           <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-4">
             <h3 className="text-sm font-semibold text-foreground">Template Variables</h3>
             <p className="text-xs text-muted-foreground">
-              Fill optional values for template placeholders. Leave empty to keep default placeholders.
+              All placeholders are optional. Leave a field empty and that token is removed from the sent email.
+              {' '}
+              <code className="text-[10px]">{'{{user}}'}</code> and <code className="text-[10px]">{'{{firstName}}'}</code> use each recipient&apos;s profile when not overridden below.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {selectedTemplate.variables.map((variableName) => (
-                <div key={variableName}>
-                  <Label className="text-xs font-semibold mb-1.5 block">
-                    {variableName}
-                  </Label>
-                  <Input
-                    {...register(`templateVariables.${variableName}` as const)}
-                    placeholder={`Value for {{${variableName}}}`}
-                    className="bg-background"
-                  />
-                </div>
-              ))}
+              {selectedTemplate.variables.map((variableName) => {
+                const isRecipientAuto = RECIPIENT_AUTO_TEMPLATE_VARS.has(variableName);
+                return (
+                  <div key={variableName}>
+                    <Label className="text-xs font-semibold mb-1.5 block">
+                      {`{{${variableName}}}`}
+                      <span className="text-muted-foreground font-normal"> (optional)</span>
+                      {isRecipientAuto ? (
+                        <span className="text-muted-foreground font-normal"> — auto from profile if empty</span>
+                      ) : null}
+                    </Label>
+                    {isRecipientAuto ? (
+                      <Input
+                        {...register(`templateVariables.${variableName}` as const)}
+                        placeholder="Leave empty to use recipient profile"
+                        className="bg-background"
+                      />
+                    ) : (
+                      <Input
+                        {...register(`templateVariables.${variableName}` as const)}
+                        placeholder={`Optional — empty removes {{${variableName}}} from email`}
+                        className="bg-background"
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
