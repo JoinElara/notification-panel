@@ -142,6 +142,25 @@ export const notificationsApi = {
     return normalizeNotification(res.data);
   },
 
+  failedRecipients: async (id: string) => {
+    const res = await api.get<{
+      data: {
+        count: number;
+        userIds: string[];
+        recipients: Array<{ userId: string; email?: string }>;
+      };
+    }>(`/admin/notifications/${id}/failed-recipients`);
+    return res?.data ?? { count: 0, userIds: [], recipients: [] };
+  },
+
+  resendToFailed: async (id: string) => {
+    const res = await api.post<{ data: Record<string, unknown> }>(
+      `/admin/notifications/${id}/resend-failed`,
+    );
+    if (!res?.data) throw new Error('Failed to create retry campaign');
+    return normalizeNotification(res.data);
+  },
+
   remove: async (id: string) => {
     await api.delete(`/admin/notifications/${id}`);
   },
@@ -189,8 +208,13 @@ export const notificationsApi = {
         provider: l.provider as string | undefined,
         status: (l.status as DeliveryLog['status']) ?? 'pending',
         timestamp: String(l.createdAt ?? l.sentAt ?? ''),
+        sentAt: l.sentAt ? String(l.sentAt) : undefined,
+        deliveredAt: l.deliveredAt ? String(l.deliveredAt) : undefined,
         attempt: typeof l.attempt === 'number' ? l.attempt : undefined,
+        providerMessageId: l.providerMessageId as string | undefined,
+        errorCode: l.errorCode as string | undefined,
         error: (l.errorMessage as string | undefined) ?? (l.error as string | undefined),
+        batchId: l.batchId as string | undefined,
       })),
       meta: {
         total,

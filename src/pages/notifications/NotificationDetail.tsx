@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { notificationsApi } from '@/services/api';
@@ -19,8 +19,15 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Send, Copy, Pencil, XCircle, RefreshCw,
   Users, Calendar, Wifi, ChevronLeft, ChevronRight, Mail,
-  ChevronDown, ChevronUp,
+  Eye,
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -58,6 +65,44 @@ function logStatusClass(status: DeliveryLog['status']): string {
   return 'text-status-processing';
 }
 
+function formatLogTimestamp(value?: string): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : format(d, 'MMM d, yyyy HH:mm:ss');
+}
+
+function LogDetailField({
+  label,
+  value,
+  mono,
+  onCopy,
+}: {
+  label: string;
+  value?: string;
+  mono?: boolean;
+  onCopy?: () => void;
+}) {
+  if (!value) return null;
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+      <div className="flex items-start gap-2">
+        <p className={`text-sm text-foreground break-all ${mono ? 'font-mono text-xs' : ''}`}>{value}</p>
+        {onCopy && (
+          <button
+            type="button"
+            onClick={onCopy}
+            className="shrink-0 p-1 rounded hover:bg-secondary text-muted-foreground"
+            aria-label={`Copy ${label}`}
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatLogStatus(status: DeliveryLog['status']): string {
   if (status === 'sent') return 'Sent';
   if (status === 'delivered') return 'Delivered';
@@ -82,7 +127,7 @@ export default function NotificationDetail() {
   const [logPlatform, setLogPlatform] = useState<string>('all');
   const [logStatus, setLogStatus] = useState<string>('all');
   const [logSearch, setLogSearch] = useState('');
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [selectedLog, setSelectedLog] = useState<DeliveryLog | null>(null);
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -161,7 +206,7 @@ export default function NotificationDetail() {
       setLogs(res.data);
       setLogMeta(res.meta);
       setLogSummary(res.summary ?? null);
-      setExpandedLogId(null);
+      setSelectedLog(null);
     } finally {
       setLogsLoading(false);
     }
@@ -206,6 +251,37 @@ export default function NotificationDetail() {
     }
   };
 
+  const handleCopyFailedIds = async () => {
+    if (!notif) return;
+    setActionLoading(true);
+    try {
+      const data = await notificationsApi.failedRecipients(notif.id);
+      if (data.count === 0) {
+        toast.error('No failed recipients on this campaign');
+        return;
+      }
+      await copyText(data.userIds.join(','), `${data.count} failed user IDs`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResendFailed = async () => {
+    if (!notif) return;
+    setActionLoading(true);
+    try {
+      const draft = await notificationsApi.resendToFailed(notif.id);
+      toast.success('Retry draft created', {
+        description: `Targeting ${draft.specificUserIds?.length ?? 0} failed recipients. Review and send when ready.`,
+      });
+      navigate(`/notifications/${draft.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create retry draft');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return <NotificationDetailSkeleton />;
   }
@@ -230,6 +306,11 @@ export default function NotificationDetail() {
   const canEdit = notif.status === 'draft' || notif.status === 'scheduled';
   const canSend = notif.status === 'draft';
   const canCancel = notif.status === 'scheduled' || notif.status === 'processing';
+  const failedCount = emailStats?.failed ?? stats?.failed ?? 0;
+  const canRetryFailed =
+    notif.platforms.includes('email') &&
+    failedCount > 0 &&
+    ['completed', 'failed'].includes(notif.status);
   const showEmailColumn =
     logPlatform === 'email' ||
     logPlatform === 'all' ||
@@ -277,6 +358,27 @@ export default function NotificationDetail() {
             <Button size="sm" variant="outline" onClick={handleCancel} disabled={actionLoading} className="gap-2 text-status-scheduled border-status-scheduled/30">
               <XCircle className="w-3.5 h-3.5" /> Cancel
             </Button>
+          )}
+          {canRetryFailed && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCopyFailedIds}
+                disabled={actionLoading}
+                className="gap-2"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copy failed IDs ({failedCount})
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleResendFailed}
+                disabled={actionLoading}
+                className="gap-2"
+              >
+                <Send className="w-3.5 h-3.5" /> Retry failed ({failedCount})
+              </Button>
+            </>
           )}
           <Button size="sm" variant="outline" onClick={handleDuplicate} disabled={actionLoading} className="gap-2">
             <Copy className="w-3.5 h-3.5" /> Duplicate
@@ -533,27 +635,28 @@ export default function NotificationDetail() {
               </div>
 
               {logSummary && (
-                <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-border text-xs">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 pt-4 border-t border-border text-xs">
                   <span>Matching: <strong>{logMeta.total.toLocaleString()}</strong></span>
                   <span className="text-status-completed">Sent: <strong>{(logSummary.sent + logSummary.delivered).toLocaleString()}</strong></span>
                   <span className="text-status-failed">Failed: <strong>{logSummary.failed.toLocaleString()}</strong></span>
                   <span className="text-status-processing">Queued: <strong>{logSummary.queued.toLocaleString()}</strong></span>
+                  <span className="text-muted-foreground ml-auto">Click a row or <Eye className="w-3 h-3 inline -mt-0.5" /> to open full log details</span>
                 </div>
               )}
             </div>
 
             <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="max-h-[min(70vh,720px)] overflow-auto">
+              <div className="overflow-x-auto">
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-secondary/90 backdrop-blur-sm">
                     <TableRow>
-                      {showEmailColumn && <TableHead className="min-w-[200px]">Email</TableHead>}
-                      <TableHead className="min-w-[120px]">User ID</TableHead>
+                      {showEmailColumn && <TableHead className="min-w-[220px]">Email</TableHead>}
+                      <TableHead className="min-w-[200px]">User ID</TableHead>
                       <TableHead className="w-[100px]">Platform</TableHead>
-                      <TableHead className="w-[90px]">Status</TableHead>
-                      <TableHead className="w-[130px]">Time</TableHead>
-                      <TableHead className="min-w-[280px]">Error</TableHead>
-                      <TableHead className="w-[40px]" />
+                      <TableHead className="w-[100px]">Status</TableHead>
+                      <TableHead className="w-[150px]">Time</TableHead>
+                      <TableHead className="min-w-[360px]">Details</TableHead>
+                      <TableHead className="w-[52px]" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -570,89 +673,165 @@ export default function NotificationDetail() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      logs.map((log) => {
-                        const isExpanded = expandedLogId === log.id;
-                        const colSpan = showEmailColumn ? 7 : 6;
-                        return (
-                          <Fragment key={log.id}>
-                            <TableRow className="align-top">
-                              {showEmailColumn && (
-                                <TableCell className="text-xs font-medium max-w-[220px]">
-                                  <button
-                                    type="button"
-                                    className="text-left hover:text-primary truncate block w-full"
-                                    title={log.recipientEmail ?? 'No email on record'}
-                                    onClick={() => log.recipientEmail && copyText(log.recipientEmail, 'email')}
-                                  >
-                                    {log.recipientEmail ?? '—'}
-                                  </button>
-                                </TableCell>
-                              )}
-                              <TableCell className="text-xs font-mono text-muted-foreground">
-                                <button
-                                  type="button"
-                                  className="hover:text-foreground text-left"
-                                  title={log.userId}
-                                  onClick={() => copyText(log.userId, 'user ID')}
-                                >
-                                  {log.userId.slice(0, 8)}…
-                                </button>
-                              </TableCell>
-                              <TableCell>
-                                <span className="flex items-center gap-1 text-xs capitalize">
-                                  <PlatformIcon platform={log.platform} className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                  {platformLabel[log.platform]}
-                                </span>
-                              </TableCell>
-                              <TableCell>
-                                <span className={`text-xs font-semibold ${logStatusClass(log.status)}`}>
-                                  {formatLogStatus(log.status)}
-                                  {log.attempt && log.attempt > 1 ? ` · ${log.attempt}` : ''}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                {log.timestamp ? format(new Date(log.timestamp), 'MMM d, HH:mm:ss') : '—'}
-                              </TableCell>
-                              <TableCell className="text-xs">
-                                {log.error ? (
-                                  <span className={`block ${isExpanded ? 'text-status-failed whitespace-pre-wrap break-words' : 'text-status-failed truncate max-w-[360px]'}`}>
-                                    {log.error}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {log.error && (
-                                  <button
-                                    type="button"
-                                    className="p-1 rounded hover:bg-secondary text-muted-foreground"
-                                    onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                                    aria-label={isExpanded ? 'Collapse error' : 'Expand error'}
-                                  >
-                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                  </button>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                            {isExpanded && log.error && (
-                              <TableRow key={`${log.id}-detail`} className="bg-secondary/20">
-                                <TableCell colSpan={colSpan} className="py-3">
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Full error</p>
-                                  <pre className="text-xs text-status-failed whitespace-pre-wrap break-all font-mono leading-relaxed">
-                                    {log.error}
-                                  </pre>
-                                </TableCell>
-                              </TableRow>
+                      logs.map((log) => (
+                        <TableRow
+                          key={log.id}
+                          className="align-top cursor-pointer hover:bg-secondary/30"
+                          onClick={() => setSelectedLog(log)}
+                        >
+                          {showEmailColumn && (
+                            <TableCell className="text-xs font-medium">
+                              <button
+                                type="button"
+                                className="text-left hover:text-primary break-all"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (log.recipientEmail) copyText(log.recipientEmail, 'email');
+                                }}
+                              >
+                                {log.recipientEmail ?? '—'}
+                              </button>
+                            </TableCell>
+                          )}
+                          <TableCell className="text-xs font-mono text-muted-foreground">
+                            <button
+                              type="button"
+                              className="hover:text-foreground text-left break-all"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyText(log.userId, 'user ID');
+                              }}
+                            >
+                              {log.userId}
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <span className="flex items-center gap-1 text-xs capitalize">
+                              <PlatformIcon platform={log.platform} className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                              {platformLabel[log.platform]}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span className={`text-xs font-semibold ${logStatusClass(log.status)}`}>
+                              {formatLogStatus(log.status)}
+                              {log.attempt && log.attempt > 1 ? ` · attempt ${log.attempt}` : ''}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {formatLogTimestamp(log.timestamp)}
+                          </TableCell>
+                          <TableCell className="text-xs min-w-[360px]">
+                            {log.error ? (
+                              <pre className="text-status-failed whitespace-pre-wrap break-words font-sans leading-relaxed m-0">
+                                {log.error}
+                              </pre>
+                            ) : log.providerMessageId ? (
+                              <span className="text-muted-foreground break-all">
+                                Message ID: {log.providerMessageId}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
                             )}
-                          </Fragment>
-                        );
-                      })
+                            {(log.errorCode || log.provider) && (
+                              <p className="text-[11px] text-muted-foreground mt-1.5">
+                                {log.provider ? `${log.provider}` : ''}
+                                {log.provider && log.errorCode ? ' · ' : ''}
+                                {log.errorCode ? `code ${log.errorCode}` : ''}
+                              </p>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              type="button"
+                              className="p-1.5 rounded hover:bg-secondary text-muted-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedLog(log);
+                              }}
+                              aria-label="View full log"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                      ))
                     )}
                   </TableBody>
                 </Table>
               </div>
             </div>
+
+            <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+              <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
+                {selectedLog && (
+                  <>
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+                      <DialogTitle className="text-base">Delivery log</DialogTitle>
+                      <p className="text-xs text-muted-foreground font-mono break-all">{selectedLog.id}</p>
+                    </DialogHeader>
+                    <ScrollArea className="flex-1 max-h-[calc(90vh-8rem)]">
+                      <div className="px-6 py-4 space-y-4">
+                        <div className="grid sm:grid-cols-2 gap-4">
+                          <LogDetailField
+                            label="Status"
+                            value={`${formatLogStatus(selectedLog.status)}${selectedLog.attempt && selectedLog.attempt > 1 ? ` (attempt ${selectedLog.attempt})` : ''}`}
+                          />
+                          <LogDetailField label="Platform" value={platformLabel[selectedLog.platform] ?? selectedLog.platform} />
+                          <LogDetailField label="Provider" value={selectedLog.provider} />
+                          <LogDetailField label="Error code" value={selectedLog.errorCode} />
+                          <LogDetailField
+                            label="Email"
+                            value={selectedLog.recipientEmail}
+                            onCopy={selectedLog.recipientEmail ? () => copyText(selectedLog.recipientEmail!, 'email') : undefined}
+                          />
+                          <LogDetailField
+                            label="User ID"
+                            value={selectedLog.userId}
+                            mono
+                            onCopy={() => copyText(selectedLog.userId, 'user ID')}
+                          />
+                          <LogDetailField label="Logged at" value={formatLogTimestamp(selectedLog.timestamp)} />
+                          <LogDetailField label="Sent at" value={formatLogTimestamp(selectedLog.sentAt)} />
+                          <LogDetailField label="Delivered at" value={formatLogTimestamp(selectedLog.deliveredAt)} />
+                          <LogDetailField label="Provider message ID" value={selectedLog.providerMessageId} mono />
+                          <LogDetailField label="Batch ID" value={selectedLog.batchId} mono />
+                        </div>
+
+                        {selectedLog.error && (
+                          <div>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Full error</p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5"
+                                onClick={() => copyText(selectedLog.error!, 'error message')}
+                              >
+                                <Copy className="w-3 h-3" /> Copy error
+                              </Button>
+                            </div>
+                            <pre className="text-xs text-status-failed whitespace-pre-wrap break-words font-mono leading-relaxed rounded-lg border border-border bg-secondary/30 p-3">
+                              {selectedLog.error}
+                            </pre>
+                          </div>
+                        )}
+
+                        <div className="pt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs gap-1.5"
+                            onClick={() => copyText(JSON.stringify(selectedLog, null, 2), 'full log JSON')}
+                          >
+                            <Copy className="w-3 h-3" /> Copy full log JSON
+                          </Button>
+                        </div>
+                      </div>
+                    </ScrollArea>
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
 
             <div className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border rounded-xl px-4 py-3">
               <p className="text-xs text-muted-foreground">

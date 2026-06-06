@@ -88,9 +88,14 @@ export interface DeliveryLog {
   provider?: string;
   status: 'sent' | 'delivered' | 'failed' | 'queued' | 'skipped' | 'pending';
   timestamp: string;
+  sentAt?: string;
+  deliveredAt?: string;
   attempt?: number;
   deviceToken?: string;
+  providerMessageId?: string;
+  errorCode?: string;
   error?: string;
+  batchId?: string;
 }
 
 export interface LogPageSummary {
