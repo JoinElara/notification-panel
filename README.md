@@ -37,17 +37,7 @@ VITE_FIREBASE_VAPID_KEY=your_web_push_vapid_public_key
 2. Ensure Redis and Mongo are available.
 3. Ensure Firebase Admin is configured in backend (`FIREBASE_CREDENTIALS_PATH` or key env vars).
 
-## Login
 
-Use an admin account in the panel login screen.
-
-- Endpoint used: `POST /api/auth/login` (see `backend-admin` `AuthController`)
-- Seed one if needed (from backend repo):
-
-```sh
-ADMIN_EMAIL='admin@test.com' ADMIN_PASSWORD='AdminPass12345!' \
-npx ts-node -r tsconfig-paths/register src/scripts/seed-admin.ts
-```
 
 ## Web delivery test flow (real push)
 
