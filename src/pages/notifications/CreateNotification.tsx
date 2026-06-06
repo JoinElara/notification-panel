@@ -61,6 +61,17 @@ const PLATFORMS: PlatformEntry[] = [
 /** Filled per recipient by the backend (not required in this form). */
 const RECIPIENT_AUTO_TEMPLATE_VARS = new Set(['user', 'firstName']);
 
+/** Auto-filled by backend-admin on send (images, logo, legal URLs). */
+const BUILT_IN_TEMPLATE_VARIABLES = new Set([
+  'assets_base_url',
+  'elara_logo_url',
+  'app_url',
+  'privacy_url',
+  'terms_url',
+  'preferences_url',
+  ...RECIPIENT_AUTO_TEMPLATE_VARS,
+]);
+
 /** Push title/body must not contain `{{var}}` — those belong in Template Variables for the email HTML. */
 function stripHandlebarsFromPushCopy(s: string): string {
   return s
@@ -146,10 +157,12 @@ export default function CreateNotification() {
     setValue('link', tpl.linkTemplate || '');
     setValue('templateId', tpl.id);
     const existingVariables = watch('templateVariables') || {};
-    const nextVariables = tpl.variables.reduce<Record<string, string>>((acc, variableName) => {
-      acc[variableName] = existingVariables[variableName] ?? '';
-      return acc;
-    }, {});
+    const nextVariables = tpl.variables
+      .filter((v) => !BUILT_IN_TEMPLATE_VARIABLES.has(v))
+      .reduce<Record<string, string>>((acc, variableName) => {
+        acc[variableName] = existingVariables[variableName] ?? '';
+        return acc;
+      }, {});
     setValue('templateVariables', nextVariables, { shouldValidate: true });
     const currentPlatforms = watch('platforms') || [];
     if (tpl.htmlTemplate && !currentPlatforms.includes('email')) {
@@ -313,16 +326,15 @@ export default function CreateNotification() {
           </div>
         </div>
 
-        {selectedTemplate && selectedTemplate.variables.length > 0 && (
+        {selectedTemplate && selectedTemplate.variables.filter((v) => !BUILT_IN_TEMPLATE_VARIABLES.has(v)).length > 0 && (
           <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-4">
             <h3 className="text-sm font-semibold text-foreground">Template Variables</h3>
             <p className="text-xs text-muted-foreground">
               All placeholders are optional. Leave a field empty and that token is removed from the sent email.
-              {' '}
-              <code className="text-[10px]">{'{{user}}'}</code> and <code className="text-[10px]">{'{{firstName}}'}</code> use each recipient&apos;s profile when not overridden below.
+              Images and logo URLs are filled automatically by the backend.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {selectedTemplate.variables.map((variableName) => {
+              {selectedTemplate.variables.filter((v) => !BUILT_IN_TEMPLATE_VARIABLES.has(v)).map((variableName) => {
                 const isRecipientAuto = RECIPIENT_AUTO_TEMPLATE_VARS.has(variableName);
                 return (
                   <div key={variableName}>

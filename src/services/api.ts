@@ -4,6 +4,8 @@ import type {
   Template,
   Segment,
   DeliveryLog,
+  LogPageSummary,
+  NotificationDeliveryStats,
   SegmentOverview,
   DashboardStats,
   AutomationRule,
@@ -144,45 +146,80 @@ export const notificationsApi = {
     await api.delete(`/admin/notifications/${id}`);
   },
 
-  logs: async (id: string, page = 1, limit = 10) => {
-    const res = await api.get<{ data: Record<string, unknown>[]; meta?: { total: number } }>(
-      `/admin/notifications/${id}/logs?page=${page}&limit=${limit}`
-    );
+  logs: async (
+    id: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      platform?: string;
+      status?: string;
+      search?: string;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    params.set('page', String(options?.page ?? 1));
+    params.set('limit', String(options?.limit ?? 25));
+    if (options?.platform) params.set('platform', options.platform);
+    if (options?.status) params.set('status', options.status);
+    if (options?.search?.trim()) params.set('search', options.search.trim());
+
+    const res = await api.get<{
+      data: Record<string, unknown>[];
+      meta?: { total: number; page: number; limit: number; totalPages: number };
+      summary?: LogPageSummary;
+    }>(`/admin/notifications/${id}/logs?${params.toString()}`);
+
     const list = Array.isArray(res?.data) ? res.data : [];
-    const total = res?.meta?.total ?? list.length;
+    const limit = options?.limit ?? 25;
+    const page = options?.page ?? 1;
+    const rawMeta = res?.meta;
+    const total = rawMeta?.total ?? list.length;
+    const resolvedLimit = rawMeta?.limit ?? limit;
+    const resolvedPage = rawMeta?.page ?? page;
+    const totalPages =
+      rawMeta?.totalPages ?? Math.max(1, Math.ceil(total / resolvedLimit));
+
     return {
       data: list.map((l) => ({
         id: toId(l as { _id?: string; id?: string }),
         notificationId: String(l.notificationId ?? id),
-        userId: String(l.userId ?? ''),
-        platform: (l.platform as DeliveryLog['platform']) ?? 'ios',
-        status: (l.status === 'sent' || l.status === 'delivered' ? 'delivered' : l.status === 'failed' ? 'failed' : 'pending') as DeliveryLog['status'],
+        userId: String(l.userId ?? (l.userId as { toString?: () => string })?.toString?.() ?? ''),
+        recipientEmail: l.recipientEmail as string | undefined,
+        platform: (l.platform as DeliveryLog['platform']) ?? 'email',
+        provider: l.provider as string | undefined,
+        status: (l.status as DeliveryLog['status']) ?? 'pending',
         timestamp: String(l.createdAt ?? l.sentAt ?? ''),
-        deviceToken: String(l.deviceToken ?? ''),
-        error: l.errorMessage as string | undefined,
+        attempt: typeof l.attempt === 'number' ? l.attempt : undefined,
+        error: (l.errorMessage as string | undefined) ?? (l.error as string | undefined),
       })),
-      total,
-      page,
-      limit,
+      meta: {
+        total,
+        page: resolvedPage,
+        limit: resolvedLimit,
+        totalPages,
+      },
+      summary: res?.summary,
     };
   },
 
-  deliveryStats: async (id: string) => {
-    const res = await api.get<Record<string, number>>(
-      `/admin/notifications/${id}/delivery-stats`
+  deliveryStats: async (id: string): Promise<NotificationDeliveryStats> => {
+    const res = await api.get<{ data: NotificationDeliveryStats }>(
+      `/admin/notifications/${id}/delivery-stats`,
     );
-    const d = res?.data ?? res;
+    const d = res?.data;
     if (!d || typeof d !== 'object') {
-      return { total: 0, delivered: 0, failed: 0, pending: 0 };
+      return {
+        total: 0,
+        sent: 0,
+        delivered: 0,
+        failed: 0,
+        queued: 0,
+        skipped: 0,
+        pending: 0,
+        byPlatform: {},
+      };
     }
-    const total = Number(d.total ?? d.sent ?? d.delivered ?? d.queued ?? 0) +
-      Number(d.failed ?? 0) + Number(d.queued ?? 0);
-    return {
-      total: total || (Number(d.delivered ?? 0) + Number(d.failed ?? 0) + Number(d.queued ?? 0)),
-      delivered: Number(d.delivered ?? d.sent ?? 0),
-      failed: Number(d.failed ?? 0),
-      pending: Number(d.queued ?? d.pending ?? 0),
-    };
+    return d;
   },
 
   stats: async () => {

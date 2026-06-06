@@ -83,11 +83,30 @@ export interface DeliveryLog {
   id: string;
   notificationId: string;
   userId: string;
+  recipientEmail?: string;
   platform: Platform;
-  status: 'delivered' | 'failed' | 'pending';
+  provider?: string;
+  status: 'sent' | 'delivered' | 'failed' | 'queued' | 'skipped' | 'pending';
   timestamp: string;
-  deviceToken: string;
+  attempt?: number;
+  deviceToken?: string;
   error?: string;
+}
+
+export interface LogPageSummary {
+  total: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  queued: number;
+  skipped: number;
+}
+
+export interface PlatformDeliveryStats extends LogPageSummary {}
+
+export interface NotificationDeliveryStats extends LogPageSummary {
+  pending: number;
+  byPlatform: Partial<Record<Platform, PlatformDeliveryStats>>;
 }
 
 export interface SegmentOverview {

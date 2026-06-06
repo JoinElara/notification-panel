@@ -21,6 +21,18 @@ interface PreviewResult {
   html?: string;
 }
 
+/** Filled automatically by backend-admin on preview/send. */
+const BUILT_IN_TEMPLATE_VARIABLES = new Set([
+  'assets_base_url',
+  'elara_logo_url',
+  'app_url',
+  'privacy_url',
+  'terms_url',
+  'preferences_url',
+  'firstName',
+  'user',
+]);
+
 export default function TemplateList() {
   const [templates, setTemplates]               = useState<Template[]>([]);
   const [loading, setLoading]                   = useState(true);
@@ -105,11 +117,16 @@ export default function TemplateList() {
   const openPreview = (tpl: Template) => {
     setSelectedTemplate(tpl);
     const vars: Record<string, string> = {};
-    tpl.variables.forEach((v) => (vars[v] = ''));
+    tpl.variables
+      .filter((v) => !BUILT_IN_TEMPLATE_VARIABLES.has(v))
+      .forEach((v) => (vars[v] = ''));
     setPreviewVars(vars);
     setPreviewResult(null);
     setPreviewOpen(true);
   };
+
+  const previewableVariables =
+    selectedTemplate?.variables.filter((v) => !BUILT_IN_TEMPLATE_VARIABLES.has(v)) ?? [];
 
   const handlePreview = async () => {
     if (!selectedTemplate) return;
@@ -245,16 +262,16 @@ export default function TemplateList() {
 
       {/* Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Preview: {selectedTemplate?.name}</DialogTitle>
           </DialogHeader>
           {selectedTemplate && (
             <div className="flex flex-col gap-4 mt-2">
-              {selectedTemplate.variables.length > 0 && (
+              {previewableVariables.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fill Variables</p>
-                  {selectedTemplate.variables.map((v) => (
+                  {previewableVariables.map((v) => (
                     <div key={v} className="flex items-center gap-2">
                       <span className="text-xs font-mono text-muted-foreground w-24 flex-shrink-0">{`{{${v}}}`}</span>
                       <Input
@@ -277,7 +294,12 @@ export default function TemplateList() {
                   <p className="text-sm font-bold text-foreground mb-1">{previewResult.title}</p>
                   <p className="text-xs text-muted-foreground">{previewResult.body}</p>
                   {previewResult.html && (
-                    <p className="text-[10px] text-muted-foreground mt-2">HTML available for email rendering.</p>
+                    <iframe
+                      title="Email HTML preview"
+                      srcDoc={previewResult.html}
+                      className="mt-3 w-full h-96 rounded-md border border-border bg-white"
+                      sandbox="allow-same-origin"
+                    />
                   )}
                 </motion.div>
               )}
